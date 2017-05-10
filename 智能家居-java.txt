@@ -1,0 +1,168 @@
+package com.yunfeng.HelloWeb.servlet;
+
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.net.Socket;
+
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
+
+import javax.servlet.ServletConfig;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+
+import com.yunfeng.HelloWeb.dao.DeviceDAO;
+import com.yunfeng.HelloWeb.entity.Device;
+
+/**
+ * Servlet implementation class ChangeLightServletWeb
+ */
+@WebServlet("/ChangeLightServletWeb")
+public class ChangeLightServletWeb extends HttpServlet {
+	private static final long serialVersionUID = 1L;
+	private Socket socket = null;
+	private PrintWriter printWriter = null;
+
+	/**
+	 * @see HttpServlet#HttpServlet()
+	 */
+	public ChangeLightServletWeb() {
+		super();
+		// TODO Auto-generated constructor stub
+	}
+
+	@Override
+	public void init(ServletConfig config) throws ServletException {
+		// SocketDemo socketDemo = new SocketDemo();
+		// socketDemo.start();
+	}
+
+	/**
+	 * @see HttpServlet#doGet(HttpServletRequest request, HttpServletResponse
+	 *      response)
+	 */
+	protected void doGet(HttpServletRequest request, HttpServletResponse response)
+			throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		// response.getWriter().append("Served at:
+		// ").append(request.getContextPath());
+
+		String name = request.getParameter("name");
+		String switchLight = request.getParameter("switchLight");
+		String lampR = request.getParameter("lampR");
+		String lampG = request.getParameter("lampG");
+		String lampB = request.getParameter("lampB");
+		String temp = request.getParameter("switchTemp");
+		
+		boolean lampState = false;
+		if (switchLight != null && switchLight.equals("on")) {
+			lampState = true;
+		}
+		boolean lighton = false;
+        if (temp != null && temp.equals("on")) {
+        	lighton = true;
+		}
+		// 构造一个json结构
+		/*
+		 * { "name": "os01", "id": 1, "lampB": 5, "lampG": 3, "lampR": 2,
+		 * "lampState": false }
+		 */
+
+		Device device = new Device();
+		device.setLampR(Integer.parseInt(lampR));
+		device.setLampG(Integer.parseInt(lampG));
+		device.setLampB(Integer.parseInt(lampB));
+		device.setLampState(lampState?"1":"0");
+		device.setName(name);
+		device.setOnline(lighton?"1":"0");
+
+		System.out.println("device"+device);
+		DeviceDAO dd = new DeviceDAO();
+		
+		//1：将页面的数据保存到mysql数据库
+		dd.saveOrUpdate(device);
+		
+		//2：与单片机通过socket 来发送与接收数据
+		sendToC(device);
+		
+		
+		response.sendRedirect("DeviceListServlet");
+		
+	}
+   private  String addZeroForNum(String str, int strLength) {
+	     int strLen = str.length();
+	     StringBuffer sb = null;
+	     while (strLen < strLength) {
+	           sb = new StringBuffer();
+	           sb.append("0").append(str);// 左(前)补0
+	        // sb.append(str).append("0");//右(后)补0
+	           str = sb.toString();
+	           strLen = str.length();
+	     }
+	     return str;
+	 }
+	private void sendToC(Device device) {
+		// 1 : 获取到java 对象
+		// 2： 根据页面上用户的操作，转化为 c的指令,构造c端需要的指令格式
+		char[] dataArray = new char[10];
+	    int rValue = device.getLampR();
+	    String rValueStr = String.valueOf(rValue);
+	    
+	    String rResult = this.addZeroForNum(rValueStr, 3);
+	    
+		if ("1".equals(device.getOnline())) {
+			// 模拟获取开发板上面的温度指数
+			dataArray[0] = '2';
+			dataArray[1] = rResult.charAt(0);
+			dataArray[2] = rResult.charAt(1);
+			dataArray[3] = rResult.charAt(2);
+		} else {
+			// 灯的控制
+			char lampbyte = '2';
+			if ("1".equals(device.getLampState())) {
+				lampbyte = '1';
+
+			}
+			System.out.println("lampbyte=" + lampbyte);
+			dataArray[0] = '1';
+			dataArray[1] = lampbyte;
+			dataArray[2] = '1';
+			dataArray[3] = '1';
+		}
+
+		String dataFromServer = String.copyValueOf(dataArray, 0, 4);
+		
+		
+
+		System.out.println("dataFromServer: " + dataFromServer);
+
+		// 3： 发送给c端
+
+		if (SocketDemo.getSocket() != null && !SocketDemo.getSocket().isClosed()) {
+			this.socket = SocketDemo.getSocket();
+			try {
+				printWriter = new PrintWriter(this.socket.getOutputStream(), true);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			printWriter.write(dataFromServer); // send to client
+			System.out.println("send " + dataFromServer + "back to client");
+			printWriter.flush(); // must be here
+		}
+	}
+
+	/**
+	 * @see HttpServlet#doPost(HttpServletRequest request, HttpServletResponse
+	 *      response)
+	 */
+	protected void doPost(HttpServletRequest request, HttpServletResponse response)
+			throws ServletException, IOException {
+		// TODO Auto-generated method stub
+		doGet(request, response);
+	}
+
+}
